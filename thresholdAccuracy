@@ -1,0 +1,219 @@
+#!/usr/bin/env python
+# coding: utf-8
+import numpy as np
+import pandas as pd
+pd.option_context('mode.use_inf_as_na', True)
+import os
+path = 'C:\\Users\\eduju\\OneDrive\\Documentos\\Doutorado\\tese\\scripts\\data'
+os.chdir(path)
+df = pd.read_csv('bandsIndex.csv', sep=',', decimal='.')
+#df = df[df['type'] == 'sample']
+#print(df.sort_values(by='Class', ascending=False))
+df = df[df['Class'] != 'dou']
+print(len(df))
+veg = df[df['Class'] == 'veg']
+wat = df[df['Class'] == 'wat']
+urb = df[df['Class'] == 'urb']
+vegClass = veg[veg['type'] == 'sample']
+watClass = wat[wat['type'] == 'sample']
+print(len(watClass))
+urbClass = urb[urb['type'] == 'sample']
+# ### Listas
+listBiome = ['Amazônia', 'Caatinga', 'Cerrado', 'Mata Atlântica', 'Pampa']
+index_vegList = ['NDVI']
+index_watList = ['RWI', 'MNDWI', 'NDWI']
+# ### Separação de amostras
+print('Classificação')
+dfSample = df[df['type'] == 'sample']
+print('total: ', len(dfSample))
+print('urb: ', len(dfSample[dfSample['Class'] == 'urb']))
+print('veg: ', len(dfSample[dfSample['Class'] == 'veg']))
+print('wat: ', len(dfSample[dfSample['Class'] == 'wat']))
+print('_______________________')
+print('Validação')
+dfValidation = df[df['type'] != 'sample']
+print('total: ', len(dfValidation))
+print('urb: ', len(dfValidation[dfValidation['Class'] == 'urb']))
+print('veg: ', len(dfValidation[dfValidation['Class'] == 'veg']))
+print('wat: ', len(dfValidation[dfValidation['Class'] == 'wat']))
+# ### Estabelecimento de limiares
+def addLine(df_true, newLine):
+    newLine_df = pd.DataFrame(newLine)#, index=[])
+    df_true = pd.concat([df_true, newLine_df])#, ignore_index=True)
+    return df_true
+def threshold2(df_true, i):
+    for j in np.arange(-0.3, 0.3, step):
+        TP  = sum(1 for x, y in zip(dfUrban[index_veg],    dfUrban[index_wat])    if x <  i and y  <  j)
+        TN  = sum(1 for x, y in zip(dfNonUrban[index_veg], dfNonUrban[index_wat]) if x >= i or y >= j)
+        urb_TPR  = TP/urb
+        urb_TNR  = TN/nonUrb
+        
+        subtract = abs(urb_TPR - urb_TNR)
+        accuracy = (TP + TN)/(urb + nonUrb)
+        newLine = {
+            'index_veg'   : [round(i,4)],
+            'index_wat'   : [round(j,4)], 
+            'sensibility' : [round(urb_TPR, 4)],
+            'especifity'  : [round(urb_TNR, 4)],
+            'subtract'    : [round(subtract, 4)],
+            'accuracy'    : [round(accuracy, 4)],
+        }
+        newLine_df = pd.DataFrame(newLine, index=[])
+        if abs(urb_TPR - urb_TNR) <= 0.01:
+            df_true = addLine(df_true, newLine)
+    return df_true
+def threshold(df_true):
+    for i in np.arange(0.5, 0.8, step): # verificar no boxplot o primeiro quartil do NDVI e aplicar uma margem de segurança
+        df_true = threshold2(df_true, i)
+    return df_true
+# #### Limiares Brasil
+indexDict = {}
+dfUrban    = dfSample[dfSample['Class'] == 'urb']
+dfNonUrban = dfSample[dfSample['Class'] != 'urb']
+dfUrbanValidation    = dfValidation[dfValidation['Class'] == 'urb']
+dfNonUrbanValidation = dfValidation[dfValidation['Class'] != 'urb']
+urb    = len(dfUrban)
+urbValidation = len(dfUrbanValidation)
+nonUrb = len(dfNonUrban)
+nonUrbValidation = len(dfNonUrbanValidation)
+print('Amostras de classificação urbanas: ', urb)
+print('Amostras de classificação não urbanas: ', nonUrb)
+print('Amostras de validação urbanas: ', urbValidation)
+print('Amostras de validação não urbanas: ', nonUrbValidation)
+step = 0.01
+for index_veg in index_vegList:
+    for index_wat in index_watList:
+        print()
+        df_true = pd.DataFrame({
+            'index_veg'   : [0.001],
+            'index_wat'   : [0.001],
+            'sensibility' : [0.001],
+            'especifity'  : [0.001],
+            'subtract'    : [0.001],
+            'accuracy'    : [0.001]
+        })
+        df_true = threshold(df_true)
+        print(index_veg, 'and', index_wat, '- Medidas de precisão nas amostras de classificação')
+        df_treeResults = df_true.loc[(df_true['sensibility']>0.8) & (df_true['especifity']>0.8)].sort_values(by='accuracy', ascending=False).head(1)
+        print(df_treeResults)
+        print('Pontos da classe veg NÃO eliminados pelo limiar de NDVI: '+
+              str(len(vegClass[vegClass['NDVI'] < df_treeResults.iloc[0, 0]])))
+        print('Pontos da classe wat eliminados pelo limiar de NDVI: '+
+              str(len(watClass[watClass['NDVI'] >= df_treeResults.iloc[0, 0]])))
+        print('Pontos da classe urb eliminados pelo limiar de NDVI: '+
+              str(len(urbClass[urbClass['NDVI'] >= df_treeResults.iloc[0, 0]])))
+        remainVegClass = vegClass[vegClass['NDVI'] < df_treeResults.iloc[0, 0]]
+        remainWatClass = watClass[watClass['NDVI'] < df_treeResults.iloc[0, 0]]
+        remainUrbClass = urbClass[urbClass['NDVI'] < df_treeResults.iloc[0, 0]]
+        print()
+        print('Pontos remanescente da classe veg eliminados pelo limiar de '+index_wat+' :'+
+              str(len(remainVegClass[remainVegClass[index_wat] >= df_treeResults.iloc[0, 1]])))
+        print('Pontos remanescente da classe wat NÃO eliminados pelo limiar de '+index_wat+' :'+
+              str(len(remainWatClass[remainWatClass[index_wat] < df_treeResults.iloc[0, 1]])))
+        print('Pontos remanescente da classe urb eliminados pelo limiar de '+index_wat+' :'+
+              str(len(remainUrbClass[remainUrbClass[index_wat] >= df_treeResults.iloc[0, 1]])))
+        
+        indexes = index_veg + '-'+ index_wat
+        indexDict[indexes] = [df_treeResults.iloc[0][0], df_treeResults.iloc[0][1]]
+        
+        index_vegBest = df_treeResults['index_veg'].iloc[0]
+        index_watBest = df_treeResults['index_wat'].iloc[0]
+        print()
+        print('Medidas de precisão nas amostras de validação')
+        TP = ((dfUrbanValidation[index_veg] <= index_vegBest) &
+              (dfUrbanValidation[index_wat] <= index_watBest)).sum()
+        print('Sensibilidade:', round(TP/urbValidation, 5))
+        TN = ((dfNonUrbanValidation[index_veg] > index_vegBest) |
+              (dfNonUrbanValidation[index_wat] > index_watBest)).sum()
+        print('Especificidade:', round(TN/nonUrbValidation, 5))
+        print('Acurácia:', round((TP + TN) / (urbValidation +
+            nonUrbValidation), 5))
+        print('______________________________________________________')
+print(indexDict)
+# #### Limiares por Bioma
+step = 0.01
+indexDictBioma = {}
+for bioma in listBiome:
+    print('______________________________________________________')
+    print('______________________________________________________')
+    print(bioma)
+    dfUrban    = dfSample.loc[(dfSample['Class'] == 'urb') & (dfSample['Bioma'] == bioma)]
+    dfNonUrban = dfSample.loc[(dfSample['Class'] != 'urb') & (dfSample['Bioma'] == bioma)]
+    dfUrbanValidation    = dfValidation.loc[(dfValidation['Class'] == 'urb') & (dfValidation['Bioma'] == bioma)]
+    dfNonUrbanValidation = dfValidation.loc[(dfValidation['Class'] != 'urb') & (dfValidation['Bioma'] == bioma)]
+    urb    = len(dfUrban)
+    urbValidation = len(dfUrbanValidation)
+    nonUrb = len(dfNonUrban)
+    nonUrbValidation = len(dfNonUrbanValidation)
+    print('Amostras de classificação urbanas: ', urb)
+    print('Amostras de classificação não urbanas: ', nonUrb)
+    print('Amostras de validação urbanas: ', urbValidation)
+    print('Amostras de validação não urbanas: ', nonUrbValidation)
+    for index_veg in index_vegList:
+        for index_wat in index_watList:
+            print()
+            df_true = pd.DataFrame({
+                'index_veg'   : [0.001],
+                'index_wat'   : [0.001],
+                'sensibility' : [0.001],
+                'especifity'  : [0.001],
+                'subtract'    : [0.001],
+                'accuracy'    : [0.001]
+            })
+            df_true = threshold(df_true)
+            print(index_veg, 'and', index_wat, 
+                '- Medidas de precisão nas amostras de classificação')
+            df_treeResults = df_true.loc[(df_true['sensibility']>0.7) &
+                (df_true['especifity']>0.7)].sort_values(by='accuracy',
+                ascending=False).head(1)
+            print(df_treeResults)
+            index_vegBest = df_treeResults['index_veg'].iloc[0]
+            index_watBest = df_treeResults['index_wat'].iloc[0]
+            vegClassBioma = vegClass[vegClass['Bioma'] == bioma]
+            watClassBioma = watClass[watClass['Bioma'] == bioma]
+            urbClassBioma = urbClass[urbClass['Bioma'] == bioma]
+                    
+            print('Pontos da classe veg NÃO eliminados pelo limiar de NDVI: '+
+                str(len(vegClassBioma[vegClassBioma['NDVI'] 
+                <df_treeResults.iloc[0, 0]])))
+            print('Pontos da classe wat eliminados pelo limiar de NDVI: '+
+                  str(len(watClassBioma[watClassBioma['NDVI'] >=
+ df_treeResults.iloc[0, 0]])))
+            print('Pontos da classe urb eliminados pelo limiar de NDVI: '+
+                  str(len(urbClassBioma[urbClassBioma['NDVI'] >=
+ df_treeResults.iloc[0, 0]])))
+    
+            remainVegClass = vegClassBioma[vegClassBioma['NDVI'] <
+ df_treeResults.iloc[0, 0]]
+            remainWatClass = watClassBioma[watClassBioma['NDVI'] <
+ df_treeResults.iloc[0, 0]]
+            remainUrbClass = urbClassBioma[urbClassBioma['NDVI'] <
+ df_treeResults.iloc[0, 0]]
+            print()
+            print('Pontos remanescente da classe veg eliminados pelo 
+                limiar de '+index_wat+' :'+
+                  str(len(remainVegClass[remainVegClass[index_wat] >= df_treeResults.iloc[0, 1]])))
+            print('Pontos remanescente da classe wat NÃO eliminados pelo limiar de '+index_wat+' :'+
+                  str(len(remainWatClass[remainWatClass[index_wat] < df_treeResults.iloc[0, 1]])))
+            print('Pontos remanescente da classe urb eliminados pelo limiar de '+index_wat+' :'+
+                  str(len(remainUrbClass[remainUrbClass[index_wat] >= df_treeResults.iloc[0, 1]])))
+            indexes = bioma + '-' + index_veg + '-'+ index_wat
+            indexDictBioma[indexes] = [index_vegBest, index_watBest]
+            
+            print()
+            print('Medidas de precisão nas amostras de validação')
+            TP = ((dfUrbanValidation[index_veg] <= index_vegBest) &
+                  (dfUrbanValidation[index_wat] <= index_watBest)).sum()
+            sensibilidade = round(TP/urbValidation, 4)
+            #print('Sensibilidade:', sensibilidade)
+            TN = ((dfNonUrbanValidation[index_veg] > index_vegBest) |
+                  (dfNonUrbanValidation[index_wat] > index_watBest)).sum()
+            especificidade = round(TN/nonUrbValidation, 4)
+            #print('Especificidade:', especificidade)
+            diferenca = sensibilidade - especificidade
+            acuracia = round((TP + TN) / (urbValidation + nonUrbValidation), 4)
+            #print('Acurácia:', acuracia)
+            print('Sensibilidade\tEspecificidade\tDiferença\tAcurácia')
+            print(f'{sensibilidade:.4f}\t{especificidade:.4f}\t{diferenca:.4f}\t{acuracia:.4f}')
+            print('______________________________________________________')
+print(indexDictBioma)
