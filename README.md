@@ -23,3 +23,5 @@ Estes scripts foram utilizados na pesquisa de doutorado para:
   </li>
 </ul>
 Para compreensão melhor os resultados, é recomendável a leitura da tese de doutorado, disponibilizada no Banco de Teses e Dissertações da Universidade de São Paulo.
+
+Funding Agency: -Conselho Nacional de Desenvolvimento Científico e Tecnológico (Grant Number: 141065/2021-4) - Brazil (CNPq)
